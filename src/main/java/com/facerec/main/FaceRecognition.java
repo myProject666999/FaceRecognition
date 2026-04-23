@@ -1,19 +1,18 @@
 package com.facerec.main;
 
-import static org.bytedeco.javacpp.opencv_core.CV_32SC1;
-import static org.bytedeco.javacpp.opencv_core.FONT_HERSHEY_PLAIN;
-import static org.bytedeco.javacpp.opencv_face.createLBPHFaceRecognizer;
-import static org.bytedeco.javacpp.opencv_highgui.destroyAllWindows;
-import static org.bytedeco.javacpp.opencv_highgui.imshow;
-import static org.bytedeco.javacpp.opencv_highgui.waitKey;
-import static org.bytedeco.javacpp.opencv_imgcodecs.CV_LOAD_IMAGE_GRAYSCALE;
-import static org.bytedeco.javacpp.opencv_imgcodecs.imread;
-import static org.bytedeco.javacpp.opencv_imgproc.COLOR_BGRA2GRAY;
-import static org.bytedeco.javacpp.opencv_imgproc.cvtColor;
-import static org.bytedeco.javacpp.opencv_imgproc.equalizeHist;
-import static org.bytedeco.javacpp.opencv_imgproc.putText;
-import static org.bytedeco.javacpp.opencv_imgproc.rectangle;
-import static org.bytedeco.javacpp.opencv_imgproc.resize;
+import static org.bytedeco.opencv.global.opencv_core.CV_32SC1;
+import static org.bytedeco.opencv.global.opencv_highgui.destroyAllWindows;
+import static org.bytedeco.opencv.global.opencv_highgui.imshow;
+import static org.bytedeco.opencv.global.opencv_highgui.waitKey;
+import static org.bytedeco.opencv.global.opencv_imgcodecs.IMREAD_GRAYSCALE;
+import static org.bytedeco.opencv.global.opencv_imgcodecs.imread;
+import static org.bytedeco.opencv.global.opencv_imgproc.COLOR_BGRA2GRAY;
+import static org.bytedeco.opencv.global.opencv_imgproc.FONT_HERSHEY_PLAIN;
+import static org.bytedeco.opencv.global.opencv_imgproc.cvtColor;
+import static org.bytedeco.opencv.global.opencv_imgproc.equalizeHist;
+import static org.bytedeco.opencv.global.opencv_imgproc.putText;
+import static org.bytedeco.opencv.global.opencv_imgproc.rectangle;
+import static org.bytedeco.opencv.global.opencv_imgproc.resize;
 
 import java.io.File;
 import java.io.FilenameFilter;
@@ -23,15 +22,18 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 
-import org.bytedeco.javacpp.opencv_core.Mat;
-import org.bytedeco.javacpp.opencv_core.MatVector;
-import org.bytedeco.javacpp.opencv_core.Point;
-import org.bytedeco.javacpp.opencv_core.Rect;
-import org.bytedeco.javacpp.opencv_core.RectVector;
-import org.bytedeco.javacpp.opencv_core.Scalar;
-import org.bytedeco.javacpp.opencv_core.Size;
-import org.bytedeco.javacpp.opencv_face.FaceRecognizer;
-import org.bytedeco.javacpp.opencv_objdetect.CascadeClassifier;
+import org.bytedeco.javacpp.IntPointer;
+import org.bytedeco.javacpp.DoublePointer;
+import org.bytedeco.opencv.opencv_core.Mat;
+import org.bytedeco.opencv.opencv_core.MatVector;
+import org.bytedeco.opencv.opencv_core.Point;
+import org.bytedeco.opencv.opencv_core.Rect;
+import org.bytedeco.opencv.opencv_core.RectVector;
+import org.bytedeco.opencv.opencv_core.Scalar;
+import org.bytedeco.opencv.opencv_core.Size;
+import org.bytedeco.opencv.opencv_face.FaceRecognizer;
+import org.bytedeco.opencv.opencv_face.LBPHFaceRecognizer;
+import org.bytedeco.opencv.opencv_objdetect.CascadeClassifier;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.FrameGrabber.Exception;
 import org.bytedeco.javacv.OpenCVFrameConverter;
@@ -40,11 +42,11 @@ import org.bytedeco.javacv.OpenCVFrameGrabber;
 
 public class FaceRecognition {
 
-	final private static String XML_FILE = "D:/OpenCV/opencv/sources/data/haarcascades/haarcascade_frontalface_default.xml";
+	final private static String XML_FILE = "haarcascade_frontalface_default.xml";
 	private volatile static boolean openCam = true;														//死循环标志变量
-	final private static String trainingDir = "F:/javacv_picture";										//样本库地址
+	final private static String trainingDir = "data/training";										//样本库地址
 	private static HashMap<Integer, String> faceMap = new HashMap<>();									//人脸与名字对应hashmap	
-	private static FaceRecognizer faceRecognizer = createLBPHFaceRecognizer();
+	private static FaceRecognizer faceRecognizer = LBPHFaceRecognizer.create();
 	private static volatile LinkedBlockingQueue<Mat> frameQueue = new LinkedBlockingQueue<>();			//线程通信队列
 	private static volatile String faceName = "";														//线程通信名字
 	
@@ -61,6 +63,12 @@ public class FaceRecognition {
         };
 
         File[] imageFiles = root.listFiles(imgFilter);
+        
+        if (imageFiles == null || imageFiles.length == 0) {
+            System.err.println("警告: 样本目录为空或不存在: " + trainingDir);
+            System.err.println("请确保样本图片位于: " + new File(trainingDir).getAbsolutePath());
+            return;
+        }
 
         MatVector images = new MatVector(imageFiles.length);
         Mat labels = new Mat(imageFiles.length, 1, CV_32SC1);
@@ -71,7 +79,7 @@ public class FaceRecognition {
         int counter = 0;
 
         for (File image : imageFiles) {
-            Mat img = imread(image.getAbsolutePath(), CV_LOAD_IMAGE_GRAYSCALE);
+            Mat img = imread(image.getAbsolutePath(), IMREAD_GRAYSCALE);
             String num = image.getName().replaceAll("\\D", "");
             int label = Integer.parseInt(num);
             String name = image.getName().split("_")[0];
@@ -195,7 +203,10 @@ public class FaceRecognition {
 	 */
 	private static String compareFace(Mat testImage) {
 		if(testImage != null) {
-			int predictedLabel = faceRecognizer.predict(testImage);
+			IntPointer label = new IntPointer(1);
+			DoublePointer confidence = new DoublePointer(1);
+			faceRecognizer.predict(testImage, label, confidence);
+			int predictedLabel = label.get(0);
 	        System.out.println("名字: " + faceMap.get(predictedLabel));
 	        return  faceMap.get(predictedLabel);	
 		} else
